@@ -1,0 +1,99 @@
+#!/usr/bin/python3
+
+import sys
+from pathlib import Path
+import os
+import json
+
+def parse_paths_v0(data):
+    return data["path_entries"]
+
+def load_path_file():
+    filePath = os.path.join(Path.home(), ".pathasaurus")
+    if not os.path.exists(filePath):
+      return []
+    
+    file = open(filePath)
+    data = json.load(file)
+
+    version = data["version"]
+    if version == "0":
+        return parse_paths_v0(data)
+    else:
+        raise Exception(f"Pathasaurus file version ({version}) too new.")
+
+def save_path_file(entries):
+    data = {
+        "version": "0",
+        "path_entries": entries
+    }
+    filePath = os.path.join(Path.home(), ".pathasaurus")
+    with open(filePath, 'w') as outfile:
+      json.dump(data, outfile)
+
+def list_command(*args):
+    entries = load_path_file()
+    print("Paths:")
+    for entry in entries:
+        name = entry["label"]
+        path = entry["path"]
+
+        print(f"  [{name}]: \"{path}\"")
+    print()
+
+def try_rebase_path(path):
+    home = os.path.realpath(Path.home())
+    absolute = os.path.realpath(path)
+    if absolute.startswith(home):
+        stripped = absolute[len(home):]
+        return f"$HOME{stripped}"
+    else:
+        return absolute
+
+
+def add_command(*args):
+    entries = load_path_file()
+    path = args[0] if len(args) > 0 else os.getcwd()
+    path = try_rebase_path(path)
+
+    label = args[1] if len(args) > 1 else os.path.basename(path)
+    entries.append({"label": label, "path": path})
+    print(f"Added [{label}]: \"{path}\"")
+
+    save_path_file(entries)
+
+def remove_command(*args):
+    if len(args) < 1:
+        print("Please provide a label of the path to remove")
+        return
+    
+    entries = load_path_file()
+    label = args[0]
+    entries = list(filter(lambda entry: entry["label"] != label, entries))
+    print(f"Removed all paths with label [{label}]")
+    save_path_file(entries)
+
+def build_command(*args):
+    entries = load_path_file()
+    
+    print(":".join(map(lambda entry: os.path.expandvars(entry["path"]), entries)))
+
+def usage():
+    print("Print some useful info here.")
+
+if len(sys.argv) < 2:
+    usage()
+else:
+    commandMap = {
+        "list": list_command,
+        "add": add_command,
+        "remove": remove_command,
+        "rm": remove_command,
+        "build": build_command,
+    }
+
+    commandString = sys.argv[1]
+    if commandString in commandMap:
+        commandMap[commandString](*sys.argv[2:])
+    else:
+        raise Exception(f"Unrecognized command: {commandString}")
